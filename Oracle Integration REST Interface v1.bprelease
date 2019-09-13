@@ -1,0 +1,183 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<bpr:release xmlns:bpr="http://www.blueprism.co.uk/product/release">
+    <bpr:name>Oracle Integration REST Interface v1</bpr:name>
+    <bpr:release-notes>2019/09/13
+- Initial realease.</bpr:release-notes>
+    <bpr:created>2019-09-13 13:46:57Z</bpr:created>
+    <bpr:package-id>45</bpr:package-id>
+    <bpr:package-name>Oracle Integration REST Interface</bpr:package-name>
+    <bpr:user-created-by>admin</bpr:user-created-by>
+    <bpr:contents count="2">
+        <credential id="39d1b806-6f9e-4fec-80b8-b84a2d38f55f" name="Oracle Integration" xmlns="http://www.blueprism.co.uk/product/credential">
+            <credentialType>BasicAuthentication</credentialType>
+            <members />
+        </credential>
+        <webapiservice id="aa86242d-2837-4510-bde9-4315c04eccaf" name="Oracle Integration REST Interface" enabled="true" xmlns="http://www.blueprism.co.uk/product/webapiservice">
+            <configuration baseurl="[Base URL]" xmlns="">
+                <actions>
+                    <action id="823" name="Get Process Definitions" enabled="true" enableRequestOutputParameter="true" disableSendingOfRequest="false">
+                        <description><![CDATA[Retrieves a list of process definitions.]]></description>
+                        <request httpmethod="GET" urlpath="/ic/api/process/v1/process-definitions">
+                            <headers />
+                            <bodycontent type="0"></bodycontent>
+                        </request>
+                        <parameters />
+                        <outputparameters>
+                            <parameters>
+                                <customoutputparameter type="CustomCode" name="Processes" datatype="collection"></customoutputparameter>
+                            </parameters>
+                            <code><![CDATA[// Define the DataTable that will hold the overall Oracle process info.
+DataTable processDataTable = new DataTable();
+processDataTable.Columns.Add("processDefId", typeof(string));
+processDataTable.Columns.Add("processName", typeof(string));
+processDataTable.Columns.Add("revision", typeof(string));
+processDataTable.Columns.Add("serviceName", typeof(string));
+processDataTable.Columns.Add("operation", typeof(string));
+processDataTable.Columns.Add("startType", typeof(string));
+processDataTable.Columns.Add("parameters", typeof(DataTable));
+
+// Load the JSON response from Oracle into Newtonsoft.
+JObject obj = JObject.Parse(Response_Content);
+
+// Cycle through the 'items' collection pulling out the information we need.
+foreach (JObject item in obj["items"])
+{
+	string processDefId = (string)item["processDefId"];
+	string processName = (string)item["processName"];
+	string revision = (string)item["revision"];
+
+	// Cycle through the interfaces collection getting the info we need.
+	foreach (JObject procInterface in item["interfaces"])
+	{
+		string serviceName = (string)procInterface["serviceName"];
+		string operation = (string)procInterface["operation"];
+		string startType = (string)procInterface["startType"];
+
+	    string arguments = null;
+		
+		// According to Oracle, we only want interfaces with a 'startType = NONE'.
+		if (startType.Equals("NONE"))
+		{
+			// Define the DataTable that will hold the overall parameter list of each Oracle interface.
+			DataTable paramDataTable = new DataTable();
+			paramDataTable.Columns.Add("name", typeof(string));
+			paramDataTable.Columns.Add("type", typeof(string));
+			
+			// Cycle through the 'args' collection getting the information we need.
+			foreach (JObject arg in procInterface["args"])
+			{
+				if (((bool)arg["primitive"]) == true)
+				{
+					string argName = (string)arg["name"];
+					string argType = (string)arg["type"];
+
+					// The 'type' filed in the Oracle response has the schema URL and type string munged
+					// together so we need to split the type value out.
+					argType = argType.Substring(argType.LastIndexOf("}") + 1);
+					
+					// Convert the Oracle data type to a supported Blue Prism data type.
+					argType = TranslateDataTypes(argType);
+					
+					// Add the interface-specific parameters to the DataTable.
+					paramDataTable.Rows.Add(argName, argType);
+				}
+			}
+			
+			// Add the process information to the DataTable.
+			processDataTable.Rows.Add(processDefId, processName, revision, serviceName, operation, startType, paramDataTable);
+		}	
+	}
+}
+
+Processes = processDataTable;]]></code>
+                        </outputparameters>
+                    </action>
+                    <action id="824" name="Start Process" enabled="true" enableRequestOutputParameter="true" disableSendingOfRequest="false">
+                        <description><![CDATA[Creates a new process instance or saves a process instance based on the value of action in the input.]]></description>
+                        <request httpmethod="POST" urlpath="/ic/api/process/v1/processes">
+                            <headers />
+                            <bodycontent type="1">
+                                <template><![CDATA[{
+  "action": "Submit",
+  "operation": "[Operation]",
+  "params": [Params],
+  "processDefId": "[ProcessDefId]",
+  "serviceName": "[ServiceName]"
+}]]></template>
+                            </bodycontent>
+                        </request>
+                        <parameters>
+                            <actionparameter name="ProcessDefId" expose="true" datatype="64">
+                                <initialvalue><![CDATA[]]></initialvalue>
+                                <description><![CDATA[The process definition ID captured from the process definition information returned from OIC.]]></description>
+                            </actionparameter>
+                            <actionparameter name="Operation" expose="true" datatype="64">
+                                <initialvalue><![CDATA[]]></initialvalue>
+                                <description><![CDATA[The text value respresenting the operation name as presented in the process definition information.]]></description>
+                            </actionparameter>
+                            <actionparameter name="ServiceName" expose="true" datatype="64">
+                                <initialvalue><![CDATA[]]></initialvalue>
+                                <description><![CDATA[The name of the service as presented in the process definition information.]]></description>
+                            </actionparameter>
+                            <actionparameter name="Params" expose="true" datatype="64">
+                                <initialvalue><![CDATA[]]></initialvalue>
+                                <description><![CDATA[A JSON string containing the required input parameters and their values as defined in the process definition information.]]></description>
+                            </actionparameter>
+                        </parameters>
+                        <outputparameters>
+                            <parameters>
+                                <customoutputparameter type="JsonPath" name="title" path="$.title" datatype="text"></customoutputparameter>
+                                <customoutputparameter type="JsonPath" name="processId" path="$.processId" datatype="text"></customoutputparameter>
+                                <customoutputparameter type="JsonPath" name="processDefId" path="$.processDefId" datatype="text"></customoutputparameter>
+                                <customoutputparameter type="JsonPath" name="processName" path="$.processName" datatype="text"></customoutputparameter>
+                                <customoutputparameter type="JsonPath" name="priority" path="$.priority" datatype="number"></customoutputparameter>
+                                <customoutputparameter type="JsonPath" name="owner" path="$.owner" datatype="text"></customoutputparameter>
+                                <customoutputparameter type="JsonPath" name="creator" path="$.creator" datatype="text"></customoutputparameter>
+                                <customoutputparameter type="JsonPath" name="state" path="$.state" datatype="text"></customoutputparameter>
+                                <customoutputparameter type="JsonPath" name="links" path="$.links" datatype="collection"></customoutputparameter>
+                            </parameters>
+                            <code><![CDATA[]]></code>
+                        </outputparameters>
+                    </action>
+                </actions>
+                <commonparameters>
+                    <actionparameter name="Base URL" expose="true" datatype="64">
+                        <initialvalue><![CDATA[]]></initialvalue>
+                        <description><![CDATA[The base URL of your Oracle Integration instance.]]></description>
+                    </actionparameter>
+                </commonparameters>
+                <commonheaders>
+                    <httpheader name="Content-Type" value="application/json" />
+                </commonheaders>
+                <commonauthentications>
+                    <authentication type="1" preemptive="false">
+                        <credential credentialname="Oracle Integration" exposetoprocess="false" inputparametername="" />
+                    </authentication>
+                </commonauthentications>
+                <commoncode>
+                    <codeproperties code="public class Parameter&#xD;&#xA;{&#xD;&#xA;&#x9;public string name { get; set; }&#xD;&#xA;&#x9;public string type { get; set; }&#xD;&#xA;}&#xD;&#xA;&#xD;&#xA;public class Process&#xD;&#xA;{&#xD;&#xA;&#x9;public string processDefId { get; set; }&#xD;&#xA;&#x9;public string processName { get; set; }&#xD;&#xA;&#x9;public string revision { get; set; }&#xD;&#xA;&#x9;public string serviceName { get; set; }&#xD;&#xA;&#x9;public string operation { get; set; }&#xD;&#xA;&#x9;public string startType { get; set; }&#xD;&#xA;&#x9;public List&lt;Parameter&gt; parameters { get; set; }&#xD;&#xA;}&#xD;&#xA;&#xD;&#xA;public class RootObject&#xD;&#xA;{&#xD;&#xA;&#x9;public List&lt;Process&gt; processes { get; set; }&#xD;&#xA;}&#xD;&#xA;&#xD;&#xA;public string TranslateDataTypes(string oraType)&#xD;&#xA;{&#xD;&#xA;&#x9;string bpType;&#xD;&#xA;&#x9;&#xD;&#xA;&#x9;switch (oraType)&#xD;&#xA;&#x9;{&#xD;&#xA;&#x9;&#x9;case &quot;int&quot;:&#xD;&#xA;&#x9;&#x9;case &quot;decimal&quot;:&#xD;&#xA;&#x9;&#x9;&#x9;bpType = &quot;Number&quot;;&#xD;&#xA;&#x9;&#x9;&#x9;break;&#xD;&#xA;&#x9;&#x9;case &quot;boolean&quot;:&#xD;&#xA;&#x9;&#x9;&#x9;bpType = &quot;Flag&quot;;&#xD;&#xA;&#x9;&#x9;&#x9;break;&#xD;&#xA;&#x9;&#x9;case &quot;date&quot;:&#xD;&#xA;&#x9;&#x9;&#x9;bpType = &quot;Date&quot;;&#xD;&#xA;&#x9;&#x9;&#x9;break;&#xD;&#xA;&#x9;&#x9;case &quot;dateTime&quot;:&#xD;&#xA;&#x9;&#x9;&#x9;bpType = &quot;DateTime&quot;;&#xD;&#xA;&#x9;&#x9;&#x9;break;&#xD;&#xA;&#x9;&#x9;default:&#xD;&#xA;&#x9;&#x9;&#x9;bpType = &quot;Text&quot;;&#xD;&#xA;&#x9;&#x9;&#x9;break;&#xD;&#xA;&#x9;}&#xD;&#xA;&#x9;return bpType;&#xD;&#xA;}&#xD;&#xA;" language="csharp">
+                        <namespaces>
+                            <namespace>System</namespace>
+                            <namespace>System.Drawing</namespace>
+                            <namespace>System.Data</namespace>
+                            <namespace>Newtonsoft.Json</namespace>
+                            <namespace>Newtonsoft.Json.Linq</namespace>
+                            <namespace>System.Collections.Generic</namespace>
+                        </namespaces>
+                        <references>
+                            <reference>System.dll</reference>
+                            <reference>System.Data.dll</reference>
+                            <reference>System.Xml.dll</reference>
+                            <reference>System.Drawing.dll</reference>
+                            <reference>System.Core.dll</reference>
+                            <reference>Newtonsoft.Json.dll</reference>
+                        </references>
+                    </codeproperties>
+                </commoncode>
+                <configurationsettings>
+                    <configurationsettings requesttimeout="10" authserverrequesttimeout="10" />
+                </configurationsettings>
+            </configuration>
+        </webapiservice>
+    </bpr:contents>
+</bpr:release>
